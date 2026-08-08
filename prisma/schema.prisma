@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum LoanStatus {
+  APPLICATION
+  APPROVED
+  ACTIVE
+  PAID
+  DEFAULTED
+  REJECTED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  LATE
+  DEFAULTED
+}
+
+model Client {
+  id              String       @id @default(cuid())
+  documentNumber  String       @unique
+  firstName       String
+  lastName        String
+  phone           String?
+  email           String?
+  address         String?
+  monthlyIncome   Decimal?     @db.Decimal(14,2)
+  employmentYears Decimal?     @db.Decimal(5,2)
+  status          ClientStatus @default(ACTIVE)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  loans           Loan[]
+
+  @@index([lastName, firstName])
+  @@index([status])
+}
+
+model Loan {
+  id             String     @id @default(cuid())
+  clientId       String
+  principal      Decimal    @db.Decimal(14,2)
+  monthlyRate    Decimal    @db.Decimal(8,5)
+  installments   Int
+  installmentAmt Decimal    @db.Decimal(14,2)
+  status         LoanStatus @default(APPLICATION)
+  approvedAt     DateTime?
+  disbursedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  client         Client     @relation(fields: [clientId], references: [id])
+  installmentsData Installment[]
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model Installment {
+  id          String            @id @default(cuid())
+  loanId      String
+  number      Int
+  dueDate     DateTime
+  amount      Decimal           @db.Decimal(14,2)
+  paidAmount  Decimal           @default(0) @db.Decimal(14,2)
+  paidAt      DateTime?
+  status      InstallmentStatus @default(PENDING)
+  loan        Loan              @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@unique([loanId, number])
+  @@index([dueDate, status])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  installmentId String
+  amount        Decimal  @db.Decimal(14,2)
+  paidAt       DateTime @default(now())
+  reference     String?
+  notes         String?
+  installment   Installment @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+
+  @@index([installmentId])
+  @@index([paidAt])
+}
