@@ -16,7 +16,11 @@ export function calculateLoan(principal: number, annualRatePercent: number, mont
   return { payment, total, interest: total - principal, schedule };
 }
 
-export function atlasScore(input: { income: number; requested: number; monthlyPayment: number; employmentYears: number; priorGoodLoans: number; priorLateLoans: number; }): { score: number; risk: "BAJO" | "MEDIO" | "ALTO"; maxSuggested: number } {
+export type ScorePuntaInput = { income: number; requested: number; monthlyPayment: number; employmentYears: number; priorGoodLoans: number; priorLateLoans: number };
+export type ScorePuntaResult = { score: number; risk: "BAJO" | "MEDIO" | "ALTO"; maxSuggested: number };
+
+/** Score Punta: modelo experimental de apoyo a decisiones. No sustituye revisión humana ni reglas regulatorias. */
+export function scorePunta(input: ScorePuntaInput): ScorePuntaResult {
   const capacity = input.income > 0 ? input.monthlyPayment / input.income : 1;
   let score = 450;
   score += Math.min(180, Math.max(0, input.income / 500));
@@ -29,3 +33,6 @@ export function atlasScore(input: { income: number; requested: number; monthlyPa
   const maxSuggested = Math.max(0, Math.min(12000, Math.floor(input.income * (risk === "BAJO" ? 0.25 : risk === "MEDIO" ? 0.18 : 0.10))));
   return { score, risk, maxSuggested };
 }
+
+/** Alias temporal para compatibilidad interna. */
+export const atlasScore = scorePunta;
