@@ -1,0 +1,18 @@
+# Entornos
+
+## Development
+Uso local. Solo datos ficticios.
+
+## Staging
+Entorno de prueba accesible para el equipo. Base de datos separada. Datos ficticios o anonimizados.
+
+## Production
+Solo se habilita después de completar el checklist regulatorio y operativo. Base de datos separada, backups, monitoreo, control de acceso y secretos propios.
+
+## Variables requeridas (ejemplo)
+- DATABASE_URL
+- AUTH_SECRET
+- APP_ENV
+- ADMIN_EMAIL
+
+Nunca subir valores reales al repositorio.
