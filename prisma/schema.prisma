@@ -8,68 +8,92 @@ datasource db {
 }
 
 enum ClientStatus { ACTIVE INACTIVE BLOCKED }
-enum LoanStatus { APPLICATION APPROVED ACTIVE PAID DEFAULTED REJECTED }
-enum InstallmentStatus { PENDING PAID LATE DEFAULTED }
+enum ApplicationStatus { DRAFT SUBMITTED UNDER_REVIEW APPROVED REJECTED CANCELLED }
+enum LoanStatus { PENDING ACTIVE PAID_OFF DEFAULTED CANCELLED }
+enum InstallmentStatus { PENDING PARTIAL PAID OVERDUE }
+enum PaymentMethod { CASH BANK_TRANSFER CARD OTHER }
 
 model Client {
-  id              String       @id @default(cuid())
-  documentNumber  String       @unique
+  id              String @id @default(cuid())
+  documentNumber  String @unique
   firstName       String
   lastName        String
   phone           String?
   email           String?
   address         String?
-  monthlyIncome   Decimal?     @db.Decimal(14,2)
-  employmentYears Decimal?     @db.Decimal(5,2)
+  monthlyIncome   Decimal? @db.Decimal(14,2)
+  employmentYears Decimal? @db.Decimal(5,2)
   status          ClientStatus @default(ACTIVE)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  applications    LoanApplication[]
   loans           Loan[]
   @@index([lastName, firstName])
   @@index([status])
 }
 
-model Loan {
-  id              String     @id @default(cuid())
+model LoanApplication {
+  id              String @id @default(cuid())
   clientId        String
-  principal       Decimal    @db.Decimal(14,2)
-  monthlyRate     Decimal    @db.Decimal(8,5)
-  installments    Int
-  installmentAmt  Decimal    @db.Decimal(14,2)
-  status          LoanStatus @default(APPLICATION)
-  approvedAt      DateTime?
-  disbursedAt     DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  client          Client     @relation(fields: [clientId], references: [id])
-  installmentPlan Installment[]
-  @@index([clientId])
-  @@index([status])
+  requestedAmount Decimal @db.Decimal(14,2)
+  termMonths      Int
+  annualRate      Decimal @db.Decimal(8,4)
+  monthlyPayment  Decimal @db.Decimal(14,2)
+  scorePunta      Int?
+  riskLevel       String?
+  status          ApplicationStatus @default(DRAFT)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  client          Client @relation(fields: [clientId], references: [id])
+  loan            Loan?
+  @@index([clientId, status])
+}
+
+model Loan {
+  id              String @id @default(cuid())
+  clientId        String
+  applicationId   String? @unique
+  principal       Decimal @db.Decimal(14,2)
+  annualRate      Decimal @db.Decimal(8,4)
+  termMonths      Int
+  monthlyPayment  Decimal @db.Decimal(14,2)
+  totalAmount     Decimal @db.Decimal(14,2)
+  interestAmount  Decimal @db.Decimal(14,2)
+  startDate       DateTime
+  status          LoanStatus @default(PENDING)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  client          Client @relation(fields: [clientId], references: [id])
+  application     LoanApplication? @relation(fields: [applicationId], references: [id])
+  installments    Installment[]
+  @@index([clientId, status])
 }
 
 model Installment {
-  id          String            @id @default(cuid())
+  id          String @id @default(cuid())
   loanId      String
   number      Int
   dueDate     DateTime
-  amount      Decimal           @db.Decimal(14,2)
-  paidAmount  Decimal           @default(0) @db.Decimal(14,2)
-  paidAt      DateTime?
+  amount      Decimal @db.Decimal(14,2)
+  paidAmount  Decimal @default(0) @db.Decimal(14,2)
   status      InstallmentStatus @default(PENDING)
-  loan        Loan              @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  loan        Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
   payments    Payment[]
   @@unique([loanId, number])
   @@index([dueDate, status])
 }
 
 model Payment {
-  id            String      @id @default(cuid())
+  id            String @id @default(cuid())
   installmentId String
-  amount        Decimal     @db.Decimal(14,2)
-  paidAt        DateTime    @default(now())
+  amount        Decimal @db.Decimal(14,2)
+  method        PaymentMethod
   reference     String?
+  paidAt        DateTime @default(now())
   notes         String?
-  installment   Installment @relation(fields: [installmentId], references: [id], onDelete: Restrict)
-  @@index([installmentId])
-  @@index([paidAt])
+  installment   Installment @relation(fields: [installmentId], references: [id])
+  @@index([installmentId, paidAt])
 }
