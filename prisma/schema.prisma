@@ -7,27 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum ClientStatus {
-  ACTIVE
-  INACTIVE
-  BLOCKED
-}
-
-enum LoanStatus {
-  APPLICATION
-  APPROVED
-  ACTIVE
-  PAID
-  DEFAULTED
-  REJECTED
-}
-
-enum InstallmentStatus {
-  PENDING
-  PAID
-  LATE
-  DEFAULTED
-}
+enum ClientStatus { ACTIVE INACTIVE BLOCKED }
+enum LoanStatus { APPLICATION APPROVED ACTIVE PAID DEFAULTED REJECTED }
+enum InstallmentStatus { PENDING PAID LATE DEFAULTED }
 
 model Client {
   id              String       @id @default(cuid())
@@ -43,26 +25,24 @@ model Client {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   loans           Loan[]
-
   @@index([lastName, firstName])
   @@index([status])
 }
 
 model Loan {
-  id             String     @id @default(cuid())
-  clientId       String
-  principal      Decimal    @db.Decimal(14,2)
-  monthlyRate    Decimal    @db.Decimal(8,5)
-  installments   Int
-  installmentAmt Decimal    @db.Decimal(14,2)
-  status         LoanStatus @default(APPLICATION)
-  approvedAt     DateTime?
-  disbursedAt    DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  client         Client     @relation(fields: [clientId], references: [id])
-  installmentsData Installment[]
-
+  id              String     @id @default(cuid())
+  clientId        String
+  principal       Decimal    @db.Decimal(14,2)
+  monthlyRate     Decimal    @db.Decimal(8,5)
+  installments    Int
+  installmentAmt  Decimal    @db.Decimal(14,2)
+  status          LoanStatus @default(APPLICATION)
+  approvedAt      DateTime?
+  disbursedAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  client          Client     @relation(fields: [clientId], references: [id])
+  installmentPlan Installment[]
   @@index([clientId])
   @@index([status])
 }
@@ -77,20 +57,19 @@ model Installment {
   paidAt      DateTime?
   status      InstallmentStatus @default(PENDING)
   loan        Loan              @relation(fields: [loanId], references: [id], onDelete: Cascade)
-
+  payments    Payment[]
   @@unique([loanId, number])
   @@index([dueDate, status])
 }
 
 model Payment {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   installmentId String
-  amount        Decimal  @db.Decimal(14,2)
-  paidAt       DateTime @default(now())
+  amount        Decimal     @db.Decimal(14,2)
+  paidAt        DateTime    @default(now())
   reference     String?
   notes         String?
   installment   Installment @relation(fields: [installmentId], references: [id], onDelete: Restrict)
-
   @@index([installmentId])
   @@index([paidAt])
 }
