@@ -1,0 +1,4 @@
+export type Installment = { number:number; dueDate:string; amount:number; principal:number; interest:number; paid:number; status:"PENDIENTE"|"PAGADA"|"PARCIAL"|"VENCIDA" };
+export function applyPayment(installment:Installment,payment:number):Installment{if(payment<=0)throw new Error("Pago inválido");const paid=Math.min(installment.amount,installment.paid+payment);return {...installment,paid,status:paid>=installment.amount?"PAGADA": "PARCIAL"};}
+export function overdueDays(dueDate:string, today=new Date()):number{const due=new Date(dueDate);return Math.max(0,Math.floor((today.getTime()-due.getTime())/86400000));}
+export function markOverdue(installment:Installment,today=new Date()):Installment{if(installment.status==="PAGADA")return installment;return overdueDays(installment.dueDate,today)>0?{...installment,status:"VENCIDA"}:installment;}
