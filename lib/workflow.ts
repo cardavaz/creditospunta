@@ -1,36 +1,38 @@
-export type ApplicationStatus = "BORRADOR" | "EN_REVISION" | "APROBADA" | "RECHAZADA" | "CANCELADA";
-export type LoanStatus = "PENDIENTE_DESEMBOLSO" | "ACTIVO" | "EN_MORA" | "REFINANCIADO" | "INCOBRABLE" | "CERRADO";
-
-export type CreditApplication = {
-  id: string;
-  clientId: string;
-  requestedAmount: number;
-  termMonths: number;
-  status: ApplicationStatus;
-  score?: number;
-  decisionReason?: string;
-};
+/**
+ * Máquina de estados de solicitudes y préstamos.
+ * Los valores coinciden exactamente con los enums de prisma/schema.prisma
+ * (ApplicationStatus / LoanStatus) para que el motor de workflow y la base
+ * de datos nunca queden desincronizados.
+ */
+export type ApplicationStatus = "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "CANCELLED";
+export type LoanStatus = "PENDING" | "ACTIVE" | "PAID_OFF" | "DEFAULTED" | "CANCELLED";
 
 export const applicationTransitions: Record<ApplicationStatus, ApplicationStatus[]> = {
-  BORRADOR: ["EN_REVISION", "CANCELADA"],
-  EN_REVISION: ["APROBADA", "RECHAZADA", "CANCELADA"],
-  APROBADA: [],
-  RECHAZADA: [],
-  CANCELADA: [],
+  DRAFT: ["SUBMITTED", "CANCELLED"],
+  SUBMITTED: ["UNDER_REVIEW", "CANCELLED"],
+  UNDER_REVIEW: ["APPROVED", "REJECTED", "CANCELLED"],
+  APPROVED: [],
+  REJECTED: [],
+  CANCELLED: [],
 };
 
 export function canTransitionApplication(from: ApplicationStatus, to: ApplicationStatus) {
   return applicationTransitions[from].includes(to);
 }
 
-export function decideApplication(application: CreditApplication, score: number, maxSuggested: number) {
-  if (application.status !== "EN_REVISION") throw new Error("La solicitud no está en revisión");
-  if (score < 600) return { status: "RECHAZADA" as const, reason: "Score Punta por debajo del umbral de simulación" };
-  if (application.requestedAmount > maxSuggested) return { status: "RECHAZADA" as const, reason: "Monto solicitado superior al máximo sugerido" };
-  return { status: "APROBADA" as const, reason: "Cumple los criterios experimentales de simulación" };
-}
+export type ApplicationDecisionInput = {
+  status: ApplicationStatus;
+  requestedAmount: number;
+};
 
-export function loanStatusFromOverdueDays(overdueDays: number): LoanStatus {
-  if (overdueDays <= 0) return "ACTIVO";
-  return "EN_MORA";
+/**
+ * Decide una solicitud EN_REVISION en base al resultado de Score Punta.
+ * Esto es una recomendación: siempre debe pasar por revisión humana antes
+ * de persistirse como decisión final (ver docs/OPERATING-POLICY.md).
+ */
+export function decideApplication(application: ApplicationDecisionInput, score: number, maxSuggested: number) {
+  if (application.status !== "UNDER_REVIEW") throw new Error("La solicitud no está en revisión");
+  if (score < 600) return { status: "REJECTED" as const, reason: "Score Punta por debajo del umbral mínimo" };
+  if (application.requestedAmount > maxSuggested) return { status: "REJECTED" as const, reason: "Monto solicitado superior al máximo sugerido por Score Punta" };
+  return { status: "APPROVED" as const, reason: "Cumple los criterios experimentales de evaluación" };
 }

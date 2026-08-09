@@ -1,11 +1,93 @@
-"use client";
+import { listLoans } from "./actions";
+import PaymentForm from "./payment-form";
+import { overdueDays } from "@/lib/payments";
 
-import { useMemo, useState } from "react";
+function money(n: unknown) {
+  const v = n === null || n === undefined ? 0 : Number(n);
+  return v.toLocaleString("es-UY", { style: "currency", currency: "UYU", maximumFractionDigits: 0 });
+}
 
-function formatUYU(value:number){return new Intl.NumberFormat("es-UY",{style:"currency",currency:"UYU",maximumFractionDigits:0}).format(value)}
+const loanStatusLabel: Record<string, string> = {
+  PENDING: "Pendiente de desembolso",
+  ACTIVE: "Activo",
+  PAID_OFF: "Pagado",
+  DEFAULTED: "Incobrable",
+  CANCELLED: "Cancelado",
+};
 
-export default function PrestamosPage(){
- const [amount,setAmount]=useState(8000); const [months,setMonths]=useState(6); const [annual,setAnnual]=useState(60);
- const result=useMemo(()=>{const r=annual/100/12; const payment=r===0?amount/months:amount*r/(1-Math.pow(1+r,-months)); const total=payment*months; return {payment,total,interest:total-amount};},[amount,months,annual]);
- return <main className="min-h-screen bg-slate-50"><header className="border-b bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5"><div className="text-2xl font-bold">Créditos<span className="text-sky-600">Punta</span></div><a href="/" className="text-sm font-semibold text-slate-600">← Dashboard</a></div></header><div className="mx-auto max-w-6xl px-6 py-8"><h1 className="text-3xl font-bold">Simulador de crédito</h1><p className="mt-1 text-slate-500">Herramienta interna de simulación. La tasa es configurable y no representa una tasa autorizada.</p><div className="mt-8 grid gap-6 lg:grid-cols-2"><section className="rounded-2xl border bg-white p-6 shadow-sm"><h2 className="font-bold">Parámetros</h2><label className="mt-6 block text-sm font-medium">Monto: {formatUYU(amount)}</label><input type="range" min="4000" max="12000" step="500" value={amount} onChange={e=>setAmount(+e.target.value)} className="mt-3 w-full"/><div className="mt-6 grid grid-cols-2 gap-4"><div><label className="text-sm font-medium">Plazo</label><select value={months} onChange={e=>setMonths(+e.target.value)} className="mt-2 w-full rounded-lg border px-3 py-2"><option value="3">3 meses</option><option value="6">6 meses</option><option value="9">9 meses</option><option value="12">12 meses</option></select></div><div><label className="text-sm font-medium">Tasa anual simulada</label><input type="number" min="0" value={annual} onChange={e=>setAnnual(+e.target.value)} className="mt-2 w-full rounded-lg border px-3 py-2"/></div></div><div className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Esta tasa es solamente para simulación. Antes de operar debemos determinar la tasa máxima legal y el costo financiero total aplicable.</div></section><section className="rounded-2xl border bg-white p-6 shadow-sm"><h2 className="font-bold">Resultado</h2><div className="mt-6 grid gap-4 sm:grid-cols-3"><div><div className="text-sm text-slate-500">Cuota</div><div className="mt-1 text-2xl font-bold">{formatUYU(result.payment)}</div></div><div><div className="text-sm text-slate-500">Total</div><div className="mt-1 text-2xl font-bold">{formatUYU(result.total)}</div></div><div><div className="text-sm text-slate-500">Intereses</div><div className="mt-1 text-2xl font-bold">{formatUYU(result.interest)}</div></div></div><div className="mt-8 border-t pt-6"><h3 className="font-semibold">Calendario estimado</h3><div className="mt-3 divide-y">{Array.from({length:months},(_,i)=><div key={i} className="flex justify-between py-3 text-sm"><span>Cuota {i+1}</span><span className="font-semibold">{formatUYU(result.payment)}</span></div>)}</div></div><button disabled className="mt-6 w-full cursor-not-allowed rounded-lg bg-slate-300 px-4 py-3 font-semibold text-slate-600">Crear solicitud — próximamente</button></section></div></div></main>
+const installmentStatusLabel: Record<string, string> = { PENDING: "Pendiente", PARTIAL: "Parcial", PAID: "Pagada", OVERDUE: "Vencida" };
+const installmentStatusClass: Record<string, string> = {
+  PENDING: "bg-slate-100 text-slate-600",
+  PARTIAL: "bg-amber-100 text-amber-800",
+  PAID: "bg-emerald-100 text-emerald-800",
+  OVERDUE: "bg-red-100 text-red-800",
+};
+
+export default async function PrestamosPage() {
+  const loans = await listLoans();
+
+  return (
+    <main className="min-h-screen">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+          <div>
+            <div className="text-2xl font-bold">Créditos<span className="text-sky-600">Punta</span></div>
+            <div className="text-xs text-slate-500">Préstamos y cuotas</div>
+          </div>
+        </div>
+      </header>
+      <div className="mx-auto max-w-7xl px-6 py-8">
+        <h1 className="text-3xl font-bold">Préstamos</h1>
+        <p className="mt-1 text-slate-500">Cuotas generadas al aprobar cada solicitud. Registrá pagos por cuota.</p>
+
+        <div className="mt-8 space-y-6">
+          {loans.map((loan) => (
+            <section key={loan.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-slate-50 px-5 py-4">
+                <div>
+                  <div className="font-semibold">{loan.client.firstName} {loan.client.lastName} · {money(loan.principal)} en {loan.termMonths} meses</div>
+                  <div className="text-xs text-slate-400">{loan.id}</div>
+                </div>
+                <span className={"rounded-full px-2.5 py-1 text-xs font-semibold " + (loan.status === "PAID_OFF" ? "bg-emerald-100 text-emerald-800" : loan.status === "DEFAULTED" ? "bg-red-100 text-red-800" : "bg-sky-100 text-sky-800")}>
+                  {loanStatusLabel[loan.status] ?? loan.status}
+                </span>
+              </div>
+              <table className="w-full text-left text-sm">
+                <thead className="bg-white text-slate-400">
+                  <tr>{["#", "Vencimiento", "Importe", "Pagado", "Estado", ""].map((x) => <th key={x} className="px-5 py-2 font-medium">{x}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {loan.installments.map((i) => {
+                    const days = i.status !== "PAID" ? overdueDays(i.dueDate) : 0;
+                    return (
+                      <tr key={i.id} className="border-t">
+                        <td className="px-5 py-3">{i.number}</td>
+                        <td className="px-5 py-3">{new Date(i.dueDate).toLocaleDateString("es-UY")}</td>
+                        <td className="px-5 py-3">{money(i.amount)}</td>
+                        <td className="px-5 py-3">{money(i.paidAmount)}</td>
+                        <td className="px-5 py-3">
+                          <span className={"rounded-full px-2.5 py-1 text-xs font-semibold " + (installmentStatusClass[i.status] ?? "")}>
+                            {installmentStatusLabel[i.status] ?? i.status}
+                          </span>
+                          {i.status !== "PAID" && days > 0 && <span className="ml-2 text-xs text-red-500">{days}d vencida</span>}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          {i.status !== "PAID" && <PaymentForm installmentId={i.id} suggestedAmount={Number(i.amount) - Number(i.paidAmount)} />}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+          ))}
+          {loans.length === 0 && (
+            <div className="rounded-2xl border bg-white p-10 text-center text-slate-400 shadow-sm">
+              Todavía no hay préstamos. Se generan automáticamente al aprobar una solicitud.
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
+  );
 }
