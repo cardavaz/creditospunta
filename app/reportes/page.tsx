@@ -1,66 +1,78 @@
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { overdueDays } from "@/lib/payments";
 import { getCurrentUser } from "@/lib/auth";
 
 function money(n: number) {
   return n.toLocaleString("es-UY", { style: "currency", currency: "UYU", maximumFractionDigits: 0 });
 }
 
+type MonthlyRow = { month_key: string; count: number; principal: number };
+type ProductRow = { product: string; loan_count: number; outstanding: number; overdue: number };
 
 export default async function ReportesPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [loans, collectionActions] = await Promise.all([
-    db.loan.findMany({
-      include: { installments: true, application: { include: { product: true } } },
-      orderBy: { createdAt: "asc" },
-    }),
-    db.collectionAction.findMany({ include: { actor: true } }),
+  // Todo agregado a nivel de base (groupBy / $queryRaw) en vez de traer todos los
+  // préstamos/cuotas/gestiones a memoria -- esto es lo que se rompía bajo carga (Fase 4).
+  const [monthlyRows, productRows, collectionGroups] = await Promise.all([
+    // Colocación mensual: capital prestado por mes de alta del préstamo.
+    db.$queryRaw<MonthlyRow[]>`
+      SELECT to_char(date_trunc('month', "createdAt"), 'YYYY-MM') as month_key,
+             COUNT(*)::int as count,
+             COALESCE(SUM(principal), 0)::float8 as principal
+      FROM "Loan"
+      GROUP BY 1
+      ORDER BY 1
+    `,
+    // Mora por producto: saldo vencido vs. saldo vigente, agrupado por producto de la solicitud origen.
+    // "Vencido" en vivo por fecha (dueDate < ahora && status != PAID), igual que en el dashboard.
+    db.$queryRaw<ProductRow[]>`
+      SELECT
+        COALESCE(p.name, 'Sin producto') as product,
+        COUNT(DISTINCT l.id)::int as loan_count,
+        COALESCE(SUM(GREATEST(i.amount - i."paidAmount", 0)), 0)::float8 as outstanding,
+        COALESCE(SUM(CASE WHEN i.status <> 'PAID' AND i."dueDate" < NOW() THEN GREATEST(i.amount - i."paidAmount", 0) ELSE 0 END), 0)::float8 as overdue
+      FROM "Loan" l
+      LEFT JOIN "LoanApplication" a ON a.id = l."applicationId"
+      LEFT JOIN "Product" p ON p.id = a."productId"
+      LEFT JOIN "Installment" i ON i."loanId" = l.id
+      GROUP BY COALESCE(p.name, 'Sin producto')
+      ORDER BY 1
+    `,
+    // Cobranza por gestor: cantidad de gestiones y resultado, agrupado por usuario que la registró.
+    db.collectionAction.groupBy({ by: ["actorId", "result"], _count: { _all: true } }),
   ]);
 
-  // Colocación mensual: capital prestado por mes de alta del préstamo.
-  const byMonth = new Map<string, { count: number; principal: number }>();
-  for (const loan of loans) {
-    const key = loan.createdAt.toLocaleDateString("es-UY", { year: "numeric", month: "short" });
-    const cur = byMonth.get(key) ?? { count: 0, principal: 0 };
-    cur.count += 1;
-    cur.principal += Number(loan.principal);
-    byMonth.set(key, cur);
-  }
-  const monthlyPlacement = Array.from(byMonth.entries()).map(([month, v]) => ({ month, ...v }));
-
-  // Mora por producto: saldo vencido vs. saldo vigente, agrupado por producto de la solicitud origen.
-  const byProduct = new Map<string, { outstanding: number; overdue: number; loanCount: number }>();
-  for (const loan of loans) {
-    const productName = loan.application?.product?.name ?? "Sin producto";
-    const cur = byProduct.get(productName) ?? { outstanding: 0, overdue: 0, loanCount: 0 };
-    cur.loanCount += 1;
-    for (const i of loan.installments) {
-      const balance = Number(i.amount) - Number(i.paidAmount);
-      if (balance <= 0) continue;
-      cur.outstanding += balance;
-      if (i.status !== "PAID" && overdueDays(i.dueDate) > 0) cur.overdue += balance;
-    }
-    byProduct.set(productName, cur);
-  }
-  const productDelinquency = Array.from(byProduct.entries()).map(([product, v]) => ({
-    product,
-    ...v,
-    rate: v.outstanding > 0 ? v.overdue / v.outstanding : 0,
+  const monthlyPlacement = monthlyRows.map((r) => ({
+    month: new Date(`${r.month_key}-01T00:00:00`).toLocaleDateString("es-UY", { year: "numeric", month: "short" }),
+    count: r.count,
+    principal: r.principal,
   }));
 
-  // Cobranza por gestor: cantidad de gestiones y resultado, agrupado por usuario que la registró.
+  const productDelinquency = productRows.map((r) => ({
+    product: r.product,
+    loanCount: r.loan_count,
+    outstanding: r.outstanding,
+    overdue: r.overdue,
+    rate: r.outstanding > 0 ? r.overdue / r.outstanding : 0,
+  }));
+
+  const actorIds = Array.from(new Set(collectionGroups.map((g) => g.actorId).filter((id): id is string => !!id)));
+  const actors = actorIds.length
+    ? await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
+    : [];
+  const actorNames = new Map<string, string>(actors.map((a) => [a.id, a.name]));
+
   const byActor = new Map<string, { name: string; total: number; promises: number; paid: number; noContact: number; refused: number }>();
-  for (const c of collectionActions) {
-    const key = c.actorId ?? "sin-actor";
-    const cur = byActor.get(key) ?? { name: c.actor?.name ?? "Sin asignar", total: 0, promises: 0, paid: 0, noContact: 0, refused: 0 };
-    cur.total += 1;
-    if (c.result === "PROMISE_TO_PAY") cur.promises += 1;
-    if (c.result === "PAID") cur.paid += 1;
-    if (c.result === "NO_CONTACT") cur.noContact += 1;
-    if (c.result === "REFUSED") cur.refused += 1;
+  for (const g of collectionGroups) {
+    const key = g.actorId ?? "sin-actor";
+    const cur = byActor.get(key) ?? { name: g.actorId ? actorNames.get(g.actorId) ?? "Sin asignar" : "Sin asignar", total: 0, promises: 0, paid: 0, noContact: 0, refused: 0 };
+    cur.total += g._count._all;
+    if (g.result === "PROMISE_TO_PAY") cur.promises += g._count._all;
+    if (g.result === "PAID") cur.paid += g._count._all;
+    if (g.result === "NO_CONTACT") cur.noContact += g._count._all;
+    if (g.result === "REFUSED") cur.refused += g._count._all;
     byActor.set(key, cur);
   }
   const collectorStats = Array.from(byActor.values()).sort((a, b) => b.total - a.total);

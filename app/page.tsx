@@ -1,7 +1,4 @@
 import { db } from "@/lib/db";
-import { portfolioMetrics, type PortfolioLoan } from "@/lib/portfolio";
-import type { LoanStatus } from "@/lib/workflow";
-import { overdueDays } from "@/lib/payments";
 
 // Capital inicial del escenario modelado en docs/FINANCIAL-MODEL.md.
 // No hay todavía un libro de caja real: esto es ilustrativo hasta Fase 2/5 del roadmap.
@@ -12,36 +9,38 @@ function money(n: number) {
 }
 
 export default async function Home() {
-  const loans = await db.loan.findMany({
-    include: { client: true, installments: true },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const portfolioLoans: PortfolioLoan[] = loans.map((loan) => {
-    const outstanding = loan.installments.reduce((s, i) => s + (Number(i.amount) - Number(i.paidAmount)), 0);
-    // "Vencido" en vivo por fecha, no solo por el status guardado (nada corre un job diario todavia que lo actualice).
-    const overdue = loan.installments.filter((i) => i.status !== "PAID" && overdueDays(i.dueDate) > 0).reduce((s, i) => s + (Number(i.amount) - Number(i.paidAmount)), 0);
-    return { principal: Number(loan.principal), outstanding, overdue, status: loan.status as LoanStatus };
-  });
-
-  const metrics = portfolioMetrics(portfolioLoans);
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const paymentsThisMonth = await db.payment.aggregate({
-    _sum: { amount: true },
-    where: { paidAt: { gte: startOfMonth } },
-  });
+
+  // Agregación a nivel de base: nada de traer todos los préstamos/cuotas a memoria.
+  // "Vencido" se calcula en vivo por fecha (dueDate < ahora && status != PAID), no solo
+  // por el status guardado, porque todavía no corre un job diario que lo actualice siempre a tiempo.
+  const [placedAgg, active, installmentTotals, overdueTotals, paymentsThisMonth, recentLoans] = await Promise.all([
+    db.loan.aggregate({ _sum: { principal: true } }),
+    db.loan.count({ where: { status: { in: ["ACTIVE", "PENDING"] } } }),
+    db.installment.aggregate({ _sum: { amount: true, paidAmount: true } }),
+    db.installment.aggregate({
+      _sum: { amount: true, paidAmount: true },
+      where: { status: { not: "PAID" }, dueDate: { lt: now } },
+    }),
+    db.payment.aggregate({ _sum: { amount: true }, where: { paidAt: { gte: startOfMonth } } }),
+    db.loan.findMany({ include: { client: true }, orderBy: { createdAt: "desc" }, take: 6 }),
+  ]);
+
+  const placed = Number(placedAgg._sum.principal ?? 0);
+  const outstanding = Number(installmentTotals._sum.amount ?? 0) - Number(installmentTotals._sum.paidAmount ?? 0);
+  const overdue = Number(overdueTotals._sum.amount ?? 0) - Number(overdueTotals._sum.paidAmount ?? 0);
+  const delinquencyRate = outstanding > 0 ? overdue / outstanding : 0;
 
   const stats: [string, string][] = [
-    ["Capital disponible", money(Math.max(0, CAPITAL_INICIAL - metrics.placed))],
-    ["Capital colocado", money(metrics.placed)],
-    ["Cartera vigente", money(metrics.outstanding)],
+    ["Capital disponible", money(Math.max(0, CAPITAL_INICIAL - placed))],
+    ["Capital colocado", money(placed)],
+    ["Cartera vigente", money(outstanding)],
     ["Cobrado este mes", money(Number(paymentsThisMonth._sum.amount ?? 0))],
-    ["Mora", (metrics.delinquencyRate * 100).toLocaleString("es-UY", { maximumFractionDigits: 1 }) + "%"],
-    ["Préstamos activos", String(metrics.active)],
+    ["Mora", (delinquencyRate * 100).toLocaleString("es-UY", { maximumFractionDigits: 1 }) + "%"],
+    ["Préstamos activos", String(active)],
   ];
 
-  const recentLoans = loans.slice(0, 6);
   const loanStatusLabel: Record<string, string> = { PENDING: "Pendiente", ACTIVE: "Al día", PAID_OFF: "Pagado", DEFAULTED: "Incobrable", CANCELLED: "Cancelado" };
 
   return (
