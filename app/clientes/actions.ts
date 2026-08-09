@@ -67,3 +67,23 @@ export async function createClient(_prev: CreateClientState, formData: FormData)
   revalidatePath("/clientes");
   return { ok: true };
 }
+
+
+export async function getClientDetail(id: string) {
+  return db.client.findUnique({
+    where: { id },
+    include: {
+      applications: {
+        include: { product: true, loan: true },
+        orderBy: { createdAt: "desc" },
+      },
+      loans: {
+        include: {
+          installments: { orderBy: { number: "asc" }, include: { payments: true } },
+          collectionActions: { orderBy: { createdAt: "desc" }, include: { actor: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  });
+}

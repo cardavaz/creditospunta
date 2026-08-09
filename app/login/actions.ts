@@ -12,15 +12,21 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
 
   if (!email || !password) return { error: "Ingresá email y contraseña." };
 
-  const ok = await login(email, password);
+  const result = await login(email, password);
   await recordAudit({
     action: "LOGIN",
     entity: "User",
     entityId: email,
-    result: ok ? "OK" : "DENIED",
-    reason: ok ? undefined : "Credenciales inválidas",
+    result: result.ok ? "OK" : "DENIED",
+    reason: result.ok ? undefined : result.reason === "locked" ? "Cuenta bloqueada por intentos fallidos" : "Credenciales inválidas",
   });
 
-  if (!ok) return { error: "Email o contraseña incorrectos." };
+  if (!result.ok) {
+    if (result.reason === "locked") {
+      const minutes = Math.max(1, Math.ceil((result.lockedUntil.getTime() - Date.now()) / 60_000));
+      return { error: `Cuenta bloqueada por demasiados intentos fallidos. Probá de nuevo en ${minutes} minuto${minutes === 1 ? "" : "s"}.` };
+    }
+    return { error: "Email o contraseña incorrectos." };
+  }
   redirect("/");
 }

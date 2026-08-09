@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listClients } from "./actions";
 import NewClientForm from "./new-client-form";
 import { getCurrentUser } from "@/lib/auth";
@@ -61,7 +62,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                       {statusLabel[c.status]}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-right"><span className="text-slate-300">Ficha próximamente</span></td>
+                  <td className="px-5 py-4 text-right"><Link href={`/clientes/${c.id}`} className="font-semibold text-sky-600 hover:underline">Ver ficha</Link></td>
                 </tr>
               ))}
               {clients.length === 0 && (

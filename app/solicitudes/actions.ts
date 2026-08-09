@@ -86,6 +86,7 @@ export async function createApplication(_prev: CreateApplicationState, formData:
       monthlyPayment: calc.payment,
       scorePunta: score.score,
       riskLevel: score.risk,
+      scoreReasons: score.reasons,
       status: "UNDER_REVIEW",
     },
   });

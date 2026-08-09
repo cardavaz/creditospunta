@@ -62,7 +62,17 @@ export default async function SolicitudesPage() {
                   <td className="px-5 py-4">{money(a.requestedAmount)}</td>
                   <td className="px-5 py-4">{a.termMonths} meses</td>
                   <td className="px-5 py-4">{money(a.monthlyPayment)}</td>
-                  <td className="px-5 py-4 font-bold">{a.scorePunta ?? "—"}</td>
+                  <td className="px-5 py-4">
+                    <div className="font-bold">{a.scorePunta ?? "—"}</div>
+                    {a.scoreReasons.length > 0 && (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs text-sky-600">Ver detalle</summary>
+                        <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
+                          {a.scoreReasons.map((r, i) => <li key={i}>{r}</li>)}
+                        </ul>
+                      </details>
+                    )}
+                  </td>
                   <td className="px-5 py-4">{a.riskLevel ?? "—"}</td>
                   <td className="px-5 py-4">
                     <span className={"rounded-full px-2.5 py-1 text-xs font-semibold " + (statusClass[a.status] ?? "bg-slate-100 text-slate-600")}>

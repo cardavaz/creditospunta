@@ -4,19 +4,46 @@ import { db } from "./db";
 import { createSession, destroySession, getSession, type SessionPayload } from "./session";
 import type { Role } from "@prisma/client";
 
-export async function verifyCredentials(email: string, password: string): Promise<SessionPayload | null> {
-  const user = await db.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-  if (!user || !user.active) return null;
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) return null;
-  return { userId: user.id, email: user.email, name: user.name, role: user.role };
-}
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCK_MINUTES = 15;
 
-export async function login(email: string, password: string) {
-  const session = await verifyCredentials(email, password);
-  if (!session) return false;
+export type LoginResult =
+  | { ok: true }
+  | { ok: false; reason: "invalid" }
+  | { ok: false; reason: "locked"; lockedUntil: Date };
+
+/**
+ * Verifica credenciales y aplica bloqueo temporal tras intentos fallidos
+ * repetidos (protección básica contra fuerza bruta sobre /login).
+ */
+export async function login(email: string, password: string): Promise<LoginResult> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await db.user.findUnique({ where: { email: normalizedEmail } });
+  if (!user || !user.active) return { ok: false, reason: "invalid" };
+
+  if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+    return { ok: false, reason: "locked", lockedUntil: user.lockedUntil };
+  }
+
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) {
+    const attempts = user.failedLoginAttempts + 1;
+    if (attempts >= MAX_FAILED_ATTEMPTS) {
+      const lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60_000);
+      await db.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil } });
+      return { ok: false, reason: "locked", lockedUntil };
+    }
+    await db.user.update({ where: { id: user.id }, data: { failedLoginAttempts: attempts } });
+    return { ok: false, reason: "invalid" };
+  }
+
+  if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+    await db.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
+  }
+
+  const session: SessionPayload = { userId: user.id, email: user.email, name: user.name, role: user.role };
   await createSession(session);
-  return true;
+  return { ok: true };
 }
 
 export async function logout() {
