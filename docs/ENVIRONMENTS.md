@@ -11,7 +11,7 @@ Solo se habilita después de completar el checklist regulatorio y operativo. Bas
 
 ## Variables requeridas (ejemplo)
 - DATABASE_URL
-- AUTH_SECRET
+- SESSION_SECRET
 - APP_ENV
 - ADMIN_EMAIL
 
