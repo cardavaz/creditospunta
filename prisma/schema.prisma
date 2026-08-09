@@ -12,6 +12,8 @@ enum ApplicationStatus { DRAFT SUBMITTED UNDER_REVIEW APPROVED REJECTED CANCELLE
 enum LoanStatus { PENDING ACTIVE PAID_OFF DEFAULTED CANCELLED }
 enum InstallmentStatus { PENDING PARTIAL PAID OVERDUE }
 enum PaymentMethod { CASH BANK_TRANSFER CARD OTHER }
+enum Role { ADMIN OPERADOR RIESGO COBRANZA CONSULTA }
+enum AuditResult { OK DENIED ERROR }
 
 model Client {
   id              String @id @default(cuid())
@@ -96,4 +98,31 @@ model Payment {
   notes         String?
   installment   Installment @relation(fields: [installmentId], references: [id])
   @@index([installmentId, paidAt])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  auditEvents  AuditEvent[]
+  @@index([role])
+}
+
+model AuditEvent {
+  id         String      @id @default(cuid())
+  actorId    String?
+  action     String
+  entity     String
+  entityId   String
+  result     AuditResult
+  reason     String?
+  occurredAt DateTime    @default(now())
+  actor      User?       @relation(fields: [actorId], references: [id])
+  @@index([entity, entityId])
+  @@index([occurredAt])
 }

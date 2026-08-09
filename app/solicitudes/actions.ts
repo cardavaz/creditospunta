@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { calculateLoan, scorePunta } from "@/lib/credit";
 import { canTransitionApplication, type ApplicationStatus } from "@/lib/workflow";
+import { requireRole } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 
 export async function listApplications() {
   return db.loanApplication.findMany({
@@ -23,6 +25,13 @@ export async function listClientsForSelect() {
 export type CreateApplicationState = { error?: string; ok?: boolean };
 
 export async function createApplication(_prev: CreateApplicationState, formData: FormData): Promise<CreateApplicationState> {
+  let actor;
+  try {
+    actor = await requireRole("ADMIN", "OPERADOR");
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No autorizado." };
+  }
+
   const clientId = String(formData.get("clientId") || "");
   const requestedAmount = Number(formData.get("requestedAmount") || 0);
   const termMonths = Number(formData.get("termMonths") || 0);
@@ -52,7 +61,7 @@ export async function createApplication(_prev: CreateApplicationState, formData:
     priorLateLoans,
   });
 
-  await db.loanApplication.create({
+  const application = await db.loanApplication.create({
     data: {
       clientId,
       requestedAmount,
@@ -65,6 +74,15 @@ export async function createApplication(_prev: CreateApplicationState, formData:
     },
   });
 
+  await recordAudit({
+    actorId: actor.userId,
+    action: "CREATE_APPLICATION",
+    entity: "LoanApplication",
+    entityId: application.id,
+    result: "OK",
+    reason: `Score Punta ${score.score} (${score.risk}): ${score.reasons.join("; ")}`,
+  });
+
   revalidatePath("/solicitudes");
   return { ok: true };
 }
@@ -72,6 +90,13 @@ export async function createApplication(_prev: CreateApplicationState, formData:
 export type DecisionState = { error?: string; ok?: boolean };
 
 export async function decideApplicationAction(_prev: DecisionState, formData: FormData): Promise<DecisionState> {
+  let actor;
+  try {
+    actor = await requireRole("ADMIN", "RIESGO");
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No autorizado." };
+  }
+
   const applicationId = String(formData.get("applicationId") || "");
   const decision = String(formData.get("decision") || "") as ApplicationStatus;
   const reason = String(formData.get("reason") || "").trim();
@@ -90,6 +115,14 @@ export async function decideApplicationAction(_prev: DecisionState, formData: Fo
     await db.loanApplication.update({
       where: { id: applicationId },
       data: { status: "REJECTED", notes: reason || application.notes },
+    });
+    await recordAudit({
+      actorId: actor.userId,
+      action: "REJECT_APPLICATION",
+      entity: "LoanApplication",
+      entityId: applicationId,
+      result: "OK",
+      reason: reason || undefined,
     });
     revalidatePath("/solicitudes");
     return { ok: true };
@@ -127,6 +160,15 @@ export async function decideApplicationAction(_prev: DecisionState, formData: Fo
         status: "PENDING" as const,
       })),
     });
+  });
+
+  await recordAudit({
+    actorId: actor.userId,
+    action: "APPROVE_APPLICATION",
+    entity: "LoanApplication",
+    entityId: applicationId,
+    result: "OK",
+    reason: reason || undefined,
   });
 
   revalidatePath("/solicitudes");

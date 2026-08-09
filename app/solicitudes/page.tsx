@@ -1,6 +1,7 @@
 import { listApplications, listClientsForSelect } from "./actions";
 import NewApplicationForm from "./new-application-form";
 import DecisionButtons from "./decision-buttons";
+import { getCurrentUser } from "@/lib/auth";
 
 function money(n: unknown) {
   const v = n === null || n === undefined ? 0 : Number(n);
@@ -26,7 +27,9 @@ const statusClass: Record<string, string> = {
 };
 
 export default async function SolicitudesPage() {
-  const [applications, clients] = await Promise.all([listApplications(), listClientsForSelect()]);
+  const [applications, clients, user] = await Promise.all([listApplications(), listClientsForSelect(), getCurrentUser()]);
+  const canCreate = user && ["ADMIN", "OPERADOR"].includes(user.role);
+  const canDecide = user && ["ADMIN", "RIESGO"].includes(user.role);
 
   return (
     <main className="min-h-screen">
@@ -36,7 +39,7 @@ export default async function SolicitudesPage() {
             <div className="text-2xl font-bold">Créditos<span className="text-sky-600">Punta</span></div>
             <div className="text-xs text-slate-500">Solicitudes de crédito</div>
           </div>
-          <NewApplicationForm clients={clients} />
+          {canCreate && <NewApplicationForm clients={clients} />}
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-6 py-8">
@@ -67,7 +70,7 @@ export default async function SolicitudesPage() {
                     {a.loan && <div className="mt-1 text-xs text-slate-400">Préstamo {a.loan.id.slice(0, 8)}</div>}
                   </td>
                   <td className="px-5 py-4 text-right">
-                    {a.status === "UNDER_REVIEW" ? <DecisionButtons applicationId={a.id} /> : null}
+                    {a.status === "UNDER_REVIEW" && canDecide ? <DecisionButtons applicationId={a.id} /> : null}
                   </td>
                 </tr>
               ))}

@@ -1,6 +1,7 @@
 import { listLoans } from "./actions";
 import PaymentForm from "./payment-form";
 import { overdueDays } from "@/lib/payments";
+import { getCurrentUser } from "@/lib/auth";
 
 function money(n: unknown) {
   const v = n === null || n === undefined ? 0 : Number(n);
@@ -24,7 +25,8 @@ const installmentStatusClass: Record<string, string> = {
 };
 
 export default async function PrestamosPage() {
-  const loans = await listLoans();
+  const [loans, user] = await Promise.all([listLoans(), getCurrentUser()]);
+  const canPay = user && ["ADMIN", "COBRANZA"].includes(user.role);
 
   return (
     <main className="min-h-screen">
@@ -72,7 +74,7 @@ export default async function PrestamosPage() {
                           {i.status !== "PAID" && days > 0 && <span className="ml-2 text-xs text-red-500">{days}d vencida</span>}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          {i.status !== "PAID" && <PaymentForm installmentId={i.id} suggestedAmount={Number(i.amount) - Number(i.paidAmount)} />}
+                          {i.status !== "PAID" && canPay && <PaymentForm installmentId={i.id} suggestedAmount={Number(i.amount) - Number(i.paidAmount)} />}
                         </td>
                       </tr>
                     );

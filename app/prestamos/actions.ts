@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { applyPayment } from "@/lib/payments";
+import { requireRole } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 
 export async function listLoans() {
   return db.loan.findMany({
@@ -19,6 +21,13 @@ export type RegisterPaymentState = { error?: string; ok?: boolean };
 const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "CARD", "OTHER"] as const;
 
 export async function registerPayment(_prev: RegisterPaymentState, formData: FormData): Promise<RegisterPaymentState> {
+  let actor;
+  try {
+    actor = await requireRole("ADMIN", "COBRANZA");
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No autorizado." };
+  }
+
   const installmentId = String(formData.get("installmentId") || "");
   const amount = Number(formData.get("amount") || 0);
   const methodRaw = String(formData.get("method") || "CASH");
@@ -55,6 +64,15 @@ export async function registerPayment(_prev: RegisterPaymentState, formData: For
         await tx.loan.update({ where: { id: installment.loanId }, data: { status: "PAID_OFF" } });
       }
     }
+  });
+
+  await recordAudit({
+    actorId: actor.userId,
+    action: "REGISTER_PAYMENT",
+    entity: "Installment",
+    entityId: installmentId,
+    result: "OK",
+    reason: `Pago de ${amount} via ${method}`,
   });
 
   revalidatePath("/prestamos");

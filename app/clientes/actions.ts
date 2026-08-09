@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { requireRole } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import type { Prisma } from "@prisma/client";
 
 export async function listClients(query?: string) {
@@ -24,6 +26,13 @@ export async function listClients(query?: string) {
 export type CreateClientState = { error?: string; ok?: boolean };
 
 export async function createClient(_prev: CreateClientState, formData: FormData): Promise<CreateClientState> {
+  let actor;
+  try {
+    actor = await requireRole("ADMIN", "OPERADOR");
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No autorizado." };
+  }
+
   const documentNumber = String(formData.get("documentNumber") || "").trim();
   const firstName = String(formData.get("firstName") || "").trim();
   const lastName = String(formData.get("lastName") || "").trim();
@@ -41,7 +50,7 @@ export async function createClient(_prev: CreateClientState, formData: FormData)
     return { error: "Ya existe un cliente con esa CI." };
   }
 
-  await db.client.create({
+  const client = await db.client.create({
     data: {
       documentNumber,
       firstName,
@@ -52,6 +61,8 @@ export async function createClient(_prev: CreateClientState, formData: FormData)
       employmentYears: employmentYearsRaw ? Number(employmentYearsRaw) : null,
     },
   });
+
+  await recordAudit({ actorId: actor.userId, action: "CREATE_CLIENT", entity: "Client", entityId: client.id, result: "OK" });
 
   revalidatePath("/clientes");
   return { ok: true };

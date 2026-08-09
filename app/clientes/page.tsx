@@ -1,5 +1,6 @@
 import { listClients } from "./actions";
 import NewClientForm from "./new-client-form";
+import { getCurrentUser } from "@/lib/auth";
 
 function money(n: unknown) {
   const v = n === null || n === undefined ? 0 : Number(n);
@@ -10,7 +11,8 @@ const statusLabel: Record<string, string> = { ACTIVE: "Activo", INACTIVE: "Inact
 
 export default async function ClientesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
-  const clients = await listClients(q);
+  const [clients, user] = await Promise.all([listClients(q), getCurrentUser()]);
+  const canCreate = user && ["ADMIN", "OPERADOR"].includes(user.role);
 
   return (
     <main className="min-h-screen">
@@ -20,7 +22,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
             <div className="text-2xl font-bold">Créditos<span className="text-sky-600">Punta</span></div>
             <div className="text-xs text-slate-500">Gestión de clientes</div>
           </div>
-          <NewClientForm />
+          {canCreate && <NewClientForm />}
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-6 py-8">
