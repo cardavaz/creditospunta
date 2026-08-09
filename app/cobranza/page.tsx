@@ -11,12 +11,14 @@ function money(n: unknown) {
 const resultLabel: Record<string, string> = { NO_CONTACT: "Sin contacto", PROMISE_TO_PAY: "Promesa de pago", REFUSED: "Se negó", PAID: "Pagó", OTHER: "Otro" };
 const channelLabel: Record<string, string> = { CALL: "Llamada", WHATSAPP: "WhatsApp", EMAIL: "Email", VISIT: "Visita", OTHER: "Otro" };
 
-export default async function CobranzaPage() {
-  const [installments, user] = await Promise.all([listOverdueInstallments(), getCurrentUser()]);
+export default async function CobranzaPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+  const [{ items: installments, total, pageCount, totalOverdueAmount, cases }, user] = await Promise.all([
+    listOverdueInstallments(page),
+    getCurrentUser(),
+  ]);
   const canManage = user && ["ADMIN", "COBRANZA"].includes(user.role);
-
-  const totalOverdue = installments.reduce((s, i) => s + (Number(i.amount) - Number(i.paidAmount)), 0);
-  const cases = new Set(installments.map((i) => i.loanId)).size;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -31,9 +33,9 @@ export default async function CobranzaPage() {
         <p className="mt-1 text-slate-500">Cuotas vencidas y gestiones de contacto.</p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border bg-white p-5"><div className="text-sm text-slate-500">Vencido</div><div className="mt-2 text-2xl font-bold">{money(totalOverdue)}</div></div>
+          <div className="rounded-2xl border bg-white p-5"><div className="text-sm text-slate-500">Vencido</div><div className="mt-2 text-2xl font-bold">{money(totalOverdueAmount)}</div></div>
           <div className="rounded-2xl border bg-white p-5"><div className="text-sm text-slate-500">Casos</div><div className="mt-2 text-2xl font-bold">{cases}</div></div>
-          <div className="rounded-2xl border bg-white p-5"><div className="text-sm text-slate-500">Cuotas vencidas</div><div className="mt-2 text-2xl font-bold">{installments.length}</div></div>
+          <div className="rounded-2xl border bg-white p-5"><div className="text-sm text-slate-500">Cuotas vencidas</div><div className="mt-2 text-2xl font-bold">{total}</div></div>
         </div>
 
         <section className="mt-8 overflow-hidden rounded-2xl border bg-white shadow-sm">
@@ -68,6 +70,13 @@ export default async function CobranzaPage() {
             </tbody>
           </table>
         </section>
+        {pageCount > 1 && (
+          <div className="mt-6 flex items-center justify-center gap-4 text-sm">
+            {page > 1 ? <a href={`?page=${page - 1}`} className="rounded-lg border bg-white px-3 py-1.5 font-semibold hover:bg-slate-50">← Anterior</a> : <span className="px-3 py-1.5 text-slate-300">← Anterior</span>}
+            <span className="text-slate-500">Página {page} de {pageCount}</span>
+            {page < pageCount ? <a href={`?page=${page + 1}`} className="rounded-lg border bg-white px-3 py-1.5 font-semibold hover:bg-slate-50">Siguiente →</a> : <span className="px-3 py-1.5 text-slate-300">Siguiente →</span>}
+          </div>
+        )}
         <p className="mt-6 text-xs text-slate-400">Datos reales de staging. Las reglas definitivas de cobranza se definirán con la revisión legal (docs/OPERATING-POLICY.md).</p>
       </div>
     </main>

@@ -5,28 +5,48 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 
-/** Cuotas vencidas "en vivo": vencidas por fecha y no pagas, sin depender de un job que actualice el status. */
-export async function listOverdueInstallments() {
-  const installments = await db.installment.findMany({
-    where: {
-      status: { not: "PAID" },
-      dueDate: { lt: new Date() },
-    },
-    include: {
-      loan: { include: { client: true } },
-    },
-    orderBy: { dueDate: "asc" },
-  });
+const PAGE_SIZE = 50;
 
-  const loanIds = [...new Set(installments.map((i) => i.loanId))];
-  const lastActions = await db.collectionAction.findMany({
-    where: { loanId: { in: loanIds } },
-    orderBy: { createdAt: "desc" },
-    distinct: ["loanId"],
-  });
+/**
+ * Cuotas vencidas "en vivo": vencidas por fecha y no pagas, sin depender de un
+ * job que actualice el status. Paginado (ver [[creditospunta-repo]]/tarea #31 --
+ * este listado se había quedado afuera de esa corrección y tenía el mismo riesgo
+ * de romperse bajo carga que los otros). Los totales (monto vencido, casos)
+ * se calculan aparte con agregados sobre TODO el conjunto, no solo la página
+ * visible.
+ */
+export async function listOverdueInstallments(page = 1) {
+  const skip = (page - 1) * PAGE_SIZE;
+  const where = { status: { not: "PAID" as const }, dueDate: { lt: new Date() } };
+
+  const [items, total, totals, distinctLoans] = await Promise.all([
+    db.installment.findMany({
+      where,
+      include: { loan: { include: { client: true } } },
+      orderBy: { dueDate: "asc" },
+      skip,
+      take: PAGE_SIZE,
+    }),
+    db.installment.count({ where }),
+    db.installment.aggregate({ where, _sum: { amount: true, paidAmount: true } }),
+    db.installment.findMany({ where, select: { loanId: true }, distinct: ["loanId"] }),
+  ]);
+
+  const loanIds = [...new Set(items.map((i) => i.loanId))];
+  const lastActions = loanIds.length
+    ? await db.collectionAction.findMany({ where: { loanId: { in: loanIds } }, orderBy: { createdAt: "desc" }, distinct: ["loanId"] })
+    : [];
   const lastActionByLoan = new Map(lastActions.map((a) => [a.loanId, a]));
 
-  return installments.map((i) => ({ ...i, lastAction: lastActionByLoan.get(i.loanId) ?? null }));
+  return {
+    items: items.map((i) => ({ ...i, lastAction: lastActionByLoan.get(i.loanId) ?? null })),
+    total,
+    page,
+    pageSize: PAGE_SIZE,
+    pageCount: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    totalOverdueAmount: Number(totals._sum.amount ?? 0) - Number(totals._sum.paidAmount ?? 0),
+    cases: distinctLoans.length,
+  };
 }
 
 export async function listCollectionActions(loanId: string) {
