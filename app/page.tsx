@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { portfolioMetrics, type PortfolioLoan } from "@/lib/portfolio";
 import type { LoanStatus } from "@/lib/workflow";
+import { overdueDays } from "@/lib/payments";
 
 // Capital inicial del escenario modelado en docs/FINANCIAL-MODEL.md.
 // No hay todavía un libro de caja real: esto es ilustrativo hasta Fase 2/5 del roadmap.
@@ -18,7 +19,8 @@ export default async function Home() {
 
   const portfolioLoans: PortfolioLoan[] = loans.map((loan) => {
     const outstanding = loan.installments.reduce((s, i) => s + (Number(i.amount) - Number(i.paidAmount)), 0);
-    const overdue = loan.installments.filter((i) => i.status === "OVERDUE").reduce((s, i) => s + (Number(i.amount) - Number(i.paidAmount)), 0);
+    // "Vencido" en vivo por fecha, no solo por el status guardado (nada corre un job diario todavia que lo actualice).
+    const overdue = loan.installments.filter((i) => i.status !== "PAID" && overdueDays(i.dueDate) > 0).reduce((s, i) => s + (Number(i.amount) - Number(i.paidAmount)), 0);
     return { principal: Number(loan.principal), outstanding, overdue, status: loan.status as LoanStatus };
   });
 

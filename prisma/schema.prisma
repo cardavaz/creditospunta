@@ -7,13 +7,72 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum ClientStatus { ACTIVE INACTIVE BLOCKED }
-enum ApplicationStatus { DRAFT SUBMITTED UNDER_REVIEW APPROVED REJECTED CANCELLED }
-enum LoanStatus { PENDING ACTIVE PAID_OFF DEFAULTED CANCELLED }
-enum InstallmentStatus { PENDING PARTIAL PAID OVERDUE }
-enum PaymentMethod { CASH BANK_TRANSFER CARD OTHER }
-enum Role { ADMIN OPERADOR RIESGO COBRANZA CONSULTA }
-enum AuditResult { OK DENIED ERROR }
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LoanStatus {
+  PENDING
+  ACTIVE
+  PAID_OFF
+  DEFAULTED
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum Role {
+  ADMIN
+  OPERADOR
+  RIESGO
+  COBRANZA
+  CONSULTA
+}
+
+enum AuditResult {
+  OK
+  DENIED
+  ERROR
+}
+
+enum CollectionChannel {
+  CALL
+  WHATSAPP
+  EMAIL
+  VISIT
+  OTHER
+}
+
+enum CollectionResult {
+  NO_CONTACT
+  PROMISE_TO_PAY
+  REFUSED
+  PAID
+  OTHER
+}
 
 model Product {
   id            String   @id @default(cuid())
@@ -83,6 +142,7 @@ model Loan {
   client          Client @relation(fields: [clientId], references: [id])
   application     LoanApplication? @relation(fields: [applicationId], references: [id])
   installments    Installment[]
+  collectionActions CollectionAction[]
   @@index([clientId, status])
 }
 
@@ -100,6 +160,21 @@ model Installment {
   payments    Payment[]
   @@unique([loanId, number])
   @@index([dueDate, status])
+}
+
+model CollectionAction {
+  id           String             @id @default(cuid())
+  loanId       String
+  installmentId String?
+  actorId      String?
+  channel      CollectionChannel
+  result       CollectionResult
+  promiseDate  DateTime?
+  notes        String?
+  createdAt    DateTime           @default(now())
+  loan         Loan               @relation(fields: [loanId], references: [id])
+  actor        User?              @relation(fields: [actorId], references: [id])
+  @@index([loanId, createdAt])
 }
 
 model Payment {
@@ -124,6 +199,7 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   auditEvents  AuditEvent[]
+  collectionActions CollectionAction[]
   @@index([role])
 }
 
