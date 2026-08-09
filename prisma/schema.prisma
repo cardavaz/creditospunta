@@ -155,6 +155,7 @@ model Installment {
   amount      Decimal @db.Decimal(14,2)
   paidAmount  Decimal @default(0) @db.Decimal(14,2)
   status      InstallmentStatus @default(PENDING)
+  lastReminderAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   loan        Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
@@ -203,7 +204,19 @@ model User {
   updatedAt    DateTime @updatedAt
   auditEvents  AuditEvent[]
   collectionActions CollectionAction[]
+  passwordResetTokens PasswordResetToken[]
   @@index([role])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+  @@index([userId])
 }
 
 model AuditEvent {

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 const COOKIE_NAME = "cp_session";
-const PUBLIC_PATHS = ["/login", "/api/health", "/api/cron"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/health", "/api/cron"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));

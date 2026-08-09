@@ -17,6 +17,7 @@ const NAV_LINKS: { href: string; label: string; roles?: string[] }[] = [
   { href: "/prestamos", label: "Préstamos" },
   { href: "/cobranza", label: "Cobranza" },
   { href: "/reportes", label: "Reportes" },
+  { href: "/modelo-financiero", label: "Modelo financiero", roles: ["ADMIN"] },
   { href: "/productos", label: "Productos", roles: ["ADMIN"] },
   { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
 ];
