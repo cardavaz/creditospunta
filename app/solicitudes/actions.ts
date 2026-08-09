@@ -9,7 +9,7 @@ import { recordAudit } from "@/lib/audit";
 
 export async function listApplications() {
   return db.loanApplication.findMany({
-    include: { client: true, loan: true },
+    include: { client: true, loan: true, product: true },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -20,6 +20,10 @@ export async function listClientsForSelect() {
     orderBy: [{ lastName: "asc" }],
     select: { id: true, firstName: true, lastName: true, documentNumber: true, monthlyIncome: true, employmentYears: true },
   });
+}
+
+export async function listActiveProducts() {
+  return db.product.findMany({ where: { active: true }, orderBy: { minAmount: "asc" } });
 }
 
 export type CreateApplicationState = { error?: string; ok?: boolean };
@@ -33,17 +37,28 @@ export async function createApplication(_prev: CreateApplicationState, formData:
   }
 
   const clientId = String(formData.get("clientId") || "");
+  const productId = String(formData.get("productId") || "");
   const requestedAmount = Number(formData.get("requestedAmount") || 0);
   const termMonths = Number(formData.get("termMonths") || 0);
   const annualRate = Number(formData.get("annualRate") || 0);
 
   if (!clientId) return { error: "Seleccioná un cliente." };
+  if (!productId) return { error: "Seleccioná un producto." };
   if (!(requestedAmount > 0)) return { error: "El monto solicitado debe ser mayor a 0." };
   if (!(termMonths > 0)) return { error: "El plazo debe ser mayor a 0." };
   if (annualRate < 0) return { error: "La tasa no puede ser negativa." };
 
   const client = await db.client.findUnique({ where: { id: clientId } });
   if (!client) return { error: "Cliente no encontrado." };
+
+  const product = await db.product.findUnique({ where: { id: productId } });
+  if (!product || !product.active) return { error: "Producto no encontrado o inactivo." };
+  if (requestedAmount < Number(product.minAmount) || requestedAmount > Number(product.maxAmount)) {
+    return { error: `El producto ${product.name} admite entre ${Number(product.minAmount)} y ${Number(product.maxAmount)}.` };
+  }
+  if (!product.allowedTerms.includes(termMonths)) {
+    return { error: `El producto ${product.name} solo permite estos plazos: ${product.allowedTerms.join(", ")}.` };
+  }
 
   const calc = calculateLoan(requestedAmount, annualRate, termMonths);
 
@@ -64,6 +79,7 @@ export async function createApplication(_prev: CreateApplicationState, formData:
   const application = await db.loanApplication.create({
     data: {
       clientId,
+      productId,
       requestedAmount,
       termMonths,
       annualRate,

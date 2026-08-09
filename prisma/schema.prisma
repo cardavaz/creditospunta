@@ -15,6 +15,18 @@ enum PaymentMethod { CASH BANK_TRANSFER CARD OTHER }
 enum Role { ADMIN OPERADOR RIESGO COBRANZA CONSULTA }
 enum AuditResult { OK DENIED ERROR }
 
+model Product {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  minAmount     Decimal  @db.Decimal(14,2)
+  maxAmount     Decimal  @db.Decimal(14,2)
+  allowedTerms  Int[]
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  applications  LoanApplication[]
+}
+
 model Client {
   id              String @id @default(cuid())
   documentNumber  String @unique
@@ -37,6 +49,7 @@ model Client {
 model LoanApplication {
   id              String @id @default(cuid())
   clientId        String
+  productId       String?
   requestedAmount Decimal @db.Decimal(14,2)
   termMonths      Int
   annualRate      Decimal @db.Decimal(8,4)
@@ -48,6 +61,7 @@ model LoanApplication {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   client          Client @relation(fields: [clientId], references: [id])
+  product         Product? @relation(fields: [productId], references: [id])
   loan            Loan?
   @@index([clientId, status])
 }

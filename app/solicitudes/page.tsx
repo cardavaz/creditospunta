@@ -1,4 +1,4 @@
-import { listApplications, listClientsForSelect } from "./actions";
+import { listApplications, listClientsForSelect, listActiveProducts } from "./actions";
 import NewApplicationForm from "./new-application-form";
 import DecisionButtons from "./decision-buttons";
 import { getCurrentUser } from "@/lib/auth";
@@ -27,7 +27,7 @@ const statusClass: Record<string, string> = {
 };
 
 export default async function SolicitudesPage() {
-  const [applications, clients, user] = await Promise.all([listApplications(), listClientsForSelect(), getCurrentUser()]);
+  const [applications, clients, products, user] = await Promise.all([listApplications(), listClientsForSelect(), listActiveProducts(), getCurrentUser()]);
   const canCreate = user && ["ADMIN", "OPERADOR"].includes(user.role);
   const canDecide = user && ["ADMIN", "RIESGO"].includes(user.role);
 
@@ -39,7 +39,7 @@ export default async function SolicitudesPage() {
             <div className="text-2xl font-bold">Créditos<span className="text-sky-600">Punta</span></div>
             <div className="text-xs text-slate-500">Solicitudes de crédito</div>
           </div>
-          {canCreate && <NewApplicationForm clients={clients} />}
+          {canCreate && <NewApplicationForm clients={clients} products={products} />}
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-6 py-8">
@@ -49,7 +49,7 @@ export default async function SolicitudesPage() {
         <section className="mt-8 overflow-hidden rounded-2xl border bg-white shadow-sm">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
-              <tr>{["Cliente", "Monto", "Plazo", "Cuota", "Score Punta", "Riesgo", "Estado", ""].map((x) => <th key={x} className="px-5 py-3 font-medium">{x}</th>)}</tr>
+              <tr>{["Cliente", "Producto", "Monto", "Plazo", "Cuota", "Score Punta", "Riesgo", "Estado", ""].map((x) => <th key={x} className="px-5 py-3 font-medium">{x}</th>)}</tr>
             </thead>
             <tbody>
               {applications.map((a) => (
@@ -58,6 +58,7 @@ export default async function SolicitudesPage() {
                     <div className="font-semibold">{a.client.firstName} {a.client.lastName}</div>
                     <div className="text-xs text-slate-400">{a.client.documentNumber}</div>
                   </td>
+                  <td className="px-5 py-4">{a.product?.name ?? "—"}</td>
                   <td className="px-5 py-4">{money(a.requestedAmount)}</td>
                   <td className="px-5 py-4">{a.termMonths} meses</td>
                   <td className="px-5 py-4">{money(a.monthlyPayment)}</td>
@@ -75,7 +76,7 @@ export default async function SolicitudesPage() {
                 </tr>
               ))}
               {applications.length === 0 && (
-                <tr><td colSpan={8} className="px-5 py-10 text-center text-slate-400">Todavía no hay solicitudes.</td></tr>
+                <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-400">Todavía no hay solicitudes.</td></tr>
               )}
             </tbody>
           </table>
