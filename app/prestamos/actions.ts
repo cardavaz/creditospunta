@@ -6,14 +6,23 @@ import { applyPayment } from "@/lib/payments";
 import { requireRole } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 
-export async function listLoans() {
-  return db.loan.findMany({
-    include: {
-      client: true,
-      installments: { orderBy: { number: "asc" } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+const PAGE_SIZE = 30;
+
+export async function listLoans(page = 1) {
+  const skip = (page - 1) * PAGE_SIZE;
+  const [items, total] = await Promise.all([
+    db.loan.findMany({
+      include: {
+        client: true,
+        installments: { orderBy: { number: "asc" } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: PAGE_SIZE,
+    }),
+    db.loan.count(),
+  ]);
+  return { items, total, page, pageSize: PAGE_SIZE, pageCount: Math.max(1, Math.ceil(total / PAGE_SIZE)) };
 }
 
 export type RegisterPaymentState = { error?: string; ok?: boolean };

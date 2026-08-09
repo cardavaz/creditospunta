@@ -10,9 +10,10 @@ function money(n: unknown) {
 
 const statusLabel: Record<string, string> = { ACTIVE: "Activo", INACTIVE: "Inactivo", BLOCKED: "Bloqueado" };
 
-export default async function ClientesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
-  const [clients, user] = await Promise.all([listClients(q), getCurrentUser()]);
+export default async function ClientesPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+  const { q, page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+  const [{ items: clients, total, pageCount }, user] = await Promise.all([listClients(q, page), getCurrentUser()]);
   const canCreate = user && ["ADMIN", "OPERADOR"].includes(user.role);
 
   return (
@@ -30,7 +31,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <h1 className="text-3xl font-bold">Clientes</h1>
-            <p className="mt-1 text-slate-500">Consulta y administración de la cartera de clientes.</p>
+            <p className="mt-1 text-slate-500">Consulta y administración de la cartera de clientes. {total} en total.</p>
           </div>
           <form method="get" className="flex gap-2">
             <input
@@ -71,6 +72,13 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
             </tbody>
           </table>
         </section>
+        {pageCount > 1 && (
+          <div className="mt-6 flex items-center justify-center gap-4 text-sm">
+            {page > 1 ? <a href={`?${q ? `q=${encodeURIComponent(q)}&` : ""}page=${page - 1}`} className="rounded-lg border bg-white px-3 py-1.5 font-semibold hover:bg-slate-50">← Anterior</a> : <span className="px-3 py-1.5 text-slate-300">← Anterior</span>}
+            <span className="text-slate-500">Página {page} de {pageCount}</span>
+            {page < pageCount ? <a href={`?${q ? `q=${encodeURIComponent(q)}&` : ""}page=${page + 1}`} className="rounded-lg border bg-white px-3 py-1.5 font-semibold hover:bg-slate-50">Siguiente →</a> : <span className="px-3 py-1.5 text-slate-300">Siguiente →</span>}
+          </div>
+        )}
         <p className="mt-6 text-xs text-slate-400">Datos reales de la base de CréditosPunta (staging). No contiene información de clientes reales.</p>
       </div>
     </main>

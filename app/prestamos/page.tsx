@@ -24,8 +24,10 @@ const installmentStatusClass: Record<string, string> = {
   OVERDUE: "bg-red-100 text-red-800",
 };
 
-export default async function PrestamosPage() {
-  const [loans, user] = await Promise.all([listLoans(), getCurrentUser()]);
+export default async function PrestamosPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+  const [{ items: loans, total, pageCount }, user] = await Promise.all([listLoans(page), getCurrentUser()]);
   const canPay = user && ["ADMIN", "COBRANZA"].includes(user.role);
 
   return (
@@ -40,7 +42,7 @@ export default async function PrestamosPage() {
       </header>
       <div className="mx-auto max-w-7xl px-6 py-8">
         <h1 className="text-3xl font-bold">Préstamos</h1>
-        <p className="mt-1 text-slate-500">Cuotas generadas al aprobar cada solicitud. Registrá pagos por cuota.</p>
+        <p className="mt-1 text-slate-500">Cuotas generadas al aprobar cada solicitud. Registrá pagos por cuota. {total} préstamos en total.</p>
 
         <div className="mt-8 space-y-6">
           {loans.map((loan) => (
@@ -89,6 +91,13 @@ export default async function PrestamosPage() {
             </div>
           )}
         </div>
+        {pageCount > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-4 text-sm">
+            {page > 1 ? <a href={`?page=${page - 1}`} className="rounded-lg border bg-white px-3 py-1.5 font-semibold hover:bg-slate-50">← Anterior</a> : <span className="px-3 py-1.5 text-slate-300">← Anterior</span>}
+            <span className="text-slate-500">Página {page} de {pageCount}</span>
+            {page < pageCount ? <a href={`?page=${page + 1}`} className="rounded-lg border bg-white px-3 py-1.5 font-semibold hover:bg-slate-50">Siguiente →</a> : <span className="px-3 py-1.5 text-slate-300">Siguiente →</span>}
+          </div>
+        )}
       </div>
     </main>
   );

@@ -7,11 +7,20 @@ import { canTransitionApplication, type ApplicationStatus } from "@/lib/workflow
 import { requireRole } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 
-export async function listApplications() {
-  return db.loanApplication.findMany({
-    include: { client: true, loan: true, product: true },
-    orderBy: { createdAt: "desc" },
-  });
+const PAGE_SIZE = 50;
+
+export async function listApplications(page = 1) {
+  const skip = (page - 1) * PAGE_SIZE;
+  const [items, total] = await Promise.all([
+    db.loanApplication.findMany({
+      include: { client: true, loan: true, product: true },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: PAGE_SIZE,
+    }),
+    db.loanApplication.count(),
+  ]);
+  return { items, total, page, pageSize: PAGE_SIZE, pageCount: Math.max(1, Math.ceil(total / PAGE_SIZE)) };
 }
 
 export async function listClientsForSelect() {

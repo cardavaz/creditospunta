@@ -6,7 +6,9 @@ import { requireRole } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import type { Prisma } from "@prisma/client";
 
-export async function listClients(query?: string) {
+const PAGE_SIZE = 50;
+
+export async function listClients(query?: string, page = 1) {
   const where: Prisma.ClientWhereInput = query
     ? {
         OR: [
@@ -17,10 +19,17 @@ export async function listClients(query?: string) {
       }
     : {};
 
-  return db.client.findMany({
-    where,
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-  });
+  const skip = (page - 1) * PAGE_SIZE;
+  const [items, total] = await Promise.all([
+    db.client.findMany({
+      where,
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      skip,
+      take: PAGE_SIZE,
+    }),
+    db.client.count({ where }),
+  ]);
+  return { items, total, page, pageSize: PAGE_SIZE, pageCount: Math.max(1, Math.ceil(total / PAGE_SIZE)) };
 }
 
 export type CreateClientState = { error?: string; ok?: boolean };
