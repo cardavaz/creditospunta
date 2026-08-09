@@ -6,6 +6,7 @@ import { sendEmail } from "./email";
 
 const TOKEN_BYTES = 32;
 const EXPIRY_MINUTES = 60;
+const RESEND_COOLDOWN_MINUTES = 2;
 
 function hashToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -18,12 +19,21 @@ function appUrl() {
 /**
  * Genera un token de un solo uso (expira en 1h) y dispara el email con el link de
  * reseteo. Siempre responde igual exista o no el email en la base -- no hay que
- * filtrar qué emails están registrados en el sistema.
+ * filtrar qué emails están registrados en el sistema. También aplica un cooldown
+ * por usuario (no por IP -- no tenemos esa capa acá) para que no se pueda
+ * bombardear la casilla de una misma cuenta pidiendo resets en loop; como la
+ * respuesta al llamador es siempre la misma, el cooldown tampoco filtra nada.
  */
 export async function requestPasswordReset(email: string): Promise<void> {
   const normalizedEmail = email.trim().toLowerCase();
   const user = await db.user.findUnique({ where: { email: normalizedEmail } });
   if (!user || !user.active) return;
+
+  const recentToken = await db.passwordResetToken.findFirst({
+    where: { userId: user.id, createdAt: { gte: new Date(Date.now() - RESEND_COOLDOWN_MINUTES * 60_000) } },
+    orderBy: { createdAt: "desc" },
+  });
+  if (recentToken) return;
 
   const rawToken = crypto.randomBytes(TOKEN_BYTES).toString("hex");
   const tokenHash = hashToken(rawToken);
